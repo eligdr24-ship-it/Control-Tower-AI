@@ -1,5 +1,7 @@
 services:
-  # ── API (Express + Prisma + Google OAuth) ────────────────────
+  # ── API (Express + Prisma) ────────────────────────────────────
+  # Render service name: control-tower-ai-api
+  # This produces the URL:  https://control-tower-ai-api.onrender.com
   - type: web
     name: control-tower-ai-api
     env: node
@@ -23,21 +25,28 @@ services:
         generateValue: true
       - key: JWT_EXPIRES_IN
         value: 7d
-      - key: CLIENT_ORIGIN
-        # Update this to match your actual static site URL after first deploy
-        value: https://control-tower-ai.onrender.com
       - key: LOG_LEVEL
         value: info
-      # ── Add these manually in Render Dashboard → Environment ──
-      # GOOGLE_CLIENT_ID       from Google Cloud Console credentials
-      # GOOGLE_CLIENT_SECRET   from Google Cloud Console credentials
-      # GOOGLE_REDIRECT_URI    https://control-tower-ai-api.onrender.com/api/v1/auth/google/callback
-      # ENCRYPTION_KEY         node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
-      # ANTHROPIC_API_KEY      Phase 3 — AI agents
 
-  # ── Client (React static site) ───────────────────────────────
+      # ── CORS: must match the client service URL exactly ────────
+      # The client service below is named "control-tower-ai-client"
+      # which produces https://control-tower-ai-client.onrender.com
+      # If you add a custom domain, append it comma-separated:
+      #   https://control-tower-ai-client.onrender.com,https://app.yourdomain.com
+      - key: CLIENT_ORIGIN
+        value: https://control-tower-ai-client.onrender.com
+
+      # ── Add these manually in Render Dashboard → Environment ───
+      # GOOGLE_CLIENT_ID
+      # GOOGLE_CLIENT_SECRET
+      # GOOGLE_REDIRECT_URI = https://control-tower-ai-api.onrender.com/api/v1/auth/google/callback
+      # ENCRYPTION_KEY      = node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+
+  # ── Client (React static site) ────────────────────────────────
+  # Render service name: control-tower-ai-client
+  # This produces the URL:  https://control-tower-ai-client.onrender.com
   - type: web
-    name: control-tower-ai
+    name: control-tower-ai-client
     env: static
     region: oregon
     plan: starter
@@ -48,8 +57,10 @@ services:
         source: /*
         destination: /index.html
     envVars:
+      # ── Must point to the API service URL above ─────────────────
+      # This is embedded into the JS bundle at build time by Vite.
+      # If you rename the API service, update this value to match.
       - key: VITE_API_URL
-        # Must match the API service name above
         value: https://control-tower-ai-api.onrender.com
 
 databases:

@@ -1,13 +1,5 @@
 /**
  * Control Tower AI — Express server entry point
- *
- * Startup order:
- *   1. Validate environment variables (crashes clearly on bad config)
- *   2. Apply security middleware (helmet, cors, rate-limit)
- *   3. Mount API routers
- *   4. Serve React client in production
- *   5. Global error handler
- *   6. Listen + graceful shutdown
  */
 import './config/env'
 import express from 'express'
@@ -40,17 +32,68 @@ app.use(helmet({
 }))
 
 // ── CORS ──────────────────────────────────────────────────────
-// In production, only allow requests from the configured client origin.
-// In development, allow all origins so Vite's dev server works without config.
+//
+// CLIENT_ORIGIN supports a single origin or a comma-separated list.
+// Example for Render (set in Dashboard → API service → Environment):
+//   CLIENT_ORIGIN=https://control-tower-ai-client.onrender.com
+//
+// Multiple origins (custom domain + Render URL):
+//   CLIENT_ORIGIN=https://control-tower-ai-client.onrender.com,https://app.yourdomain.com
+//
+function buildCorsOrigin(
+  nodeEnv: string,
+  clientOrigin: string,
+): cors.CorsOptions['origin'] {
+  // Development: allow everything so the Vite dev server works with zero config
+  if (nodeEnv !== 'production') return true
+
+  // Production: parse the comma-separated allow-list
+  const allowed = clientOrigin
+    .split(',')
+    .map(o => o.trim())
+    .filter(Boolean)
+
+  if (allowed.length === 0) {
+    logger.warn(
+      'CLIENT_ORIGIN is empty. No origins will be allowed in production. ' +
+      'Set CLIENT_ORIGIN in your Render environment variables.'
+    )
+    return false
+  }
+
+  logger.info('CORS allow-list:', { origins: allowed })
+
+  return (
+    origin: string | undefined,
+    callback: (err: Error | null, allow?: boolean) => void,
+  ) => {
+    // Allow requests with no Origin header (same-origin, curl, Postman, etc.)
+    if (!origin) return callback(null, true)
+
+    if (allowed.includes(origin)) {
+      callback(null, true)
+    } else {
+      logger.warn('CORS blocked request', { origin, allowed })
+      callback(new Error(`CORS: origin "${origin}" is not in the allow-list`))
+    }
+  }
+}
+
 app.use(cors({
-  origin:         config.NODE_ENV === 'production' ? config.CLIENT_ORIGIN : true,
+  origin:         buildCorsOrigin(config.NODE_ENV, config.CLIENT_ORIGIN),
   methods:        ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials:    true,
 }))
 
+// Explicitly handle preflight for all routes
+app.options('*', cors({
+  origin:         buildCorsOrigin(config.NODE_ENV, config.CLIENT_ORIGIN),
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials:    true,
+}))
+
 // ── Rate limiting ─────────────────────────────────────────────
-// 300 requests per 15 minutes per IP across all /api routes.
 app.use('/api', rateLimit({
   windowMs:        15 * 60 * 1000,
   max:             300,
@@ -76,21 +119,14 @@ if (config.NODE_ENV !== 'test') {
 app.use(requestLogger)
 
 // ── API routes ────────────────────────────────────────────────
-// Auth (login, register, Google OAuth) — /api/v1/auth/*
 app.use('/api/v1/auth',            authRouter)
-
-// Core data routes
 app.use('/api/v1/dashboard',       dashboardRouter)
 app.use('/api/v1/profiles',        profilesRouter)
 app.use('/api/v1/reviews',         reviewsRouter)
 app.use('/api/v1/agents',          agentsRouter)
-
-// Google account data operations (discover, sync-jobs)
 app.use('/api/v1/google-accounts', googleAccountsRouter)
 
 // ── Infrastructure health check ───────────────────────────────
-// Used by Render (and load balancers) to verify the service is alive.
-// Returns 503 if the database is unreachable.
 app.get('/healthz', async (_req, res) => {
   let dbOk = true
   try {
@@ -107,29 +143,26 @@ app.get('/healthz', async (_req, res) => {
 })
 
 // ── Serve React client in production ──────────────────────────
-// In development, the Vite dev server handles the client.
 if (config.NODE_ENV === 'production') {
   const clientDist = path.join(__dirname, '../../client/dist')
   app.use(express.static(clientDist, { maxAge: '1y', etag: true }))
-  // SPA fallback — all non-API routes return index.html
   app.get('*', (_req, res) => {
     res.sendFile(path.join(clientDist, 'index.html'))
   })
 }
 
-// ── Global error handler ──────────────────────────────────────
-// Must be registered AFTER all routes.
+// ── Global error handler (must be last) ──────────────────────
 app.use(errorHandler)
 
-// ── Start server ──────────────────────────────────────────────
+// ── Start ─────────────────────────────────────────────────────
 const server = app.listen(config.PORT, () => {
   logger.info('Control Tower AI server started', {
-    port: config.PORT,
-    env:  config.NODE_ENV,
+    port:          config.PORT,
+    env:           config.NODE_ENV,
+    clientOrigins: config.CLIENT_ORIGIN,
   })
 })
 
-// ── Graceful shutdown ─────────────────────────────────────────
 async function shutdown(signal: string): Promise<void> {
   logger.info(`${signal} received — shutting down gracefully`)
   server.close(async () => {
@@ -137,11 +170,7 @@ async function shutdown(signal: string): Promise<void> {
     logger.info('Server closed')
     process.exit(0)
   })
-  // Force exit after 10 s if connections don't drain
-  setTimeout(() => {
-    logger.error('Forced exit after timeout')
-    process.exit(1)
-  }, 10_000)
+  setTimeout(() => { process.exit(1) }, 10_000)
 }
 
 process.on('SIGTERM', () => void shutdown('SIGTERM'))
