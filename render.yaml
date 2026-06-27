@@ -1,11 +1,5 @@
 services:
-  # ── API (Express + Prisma) ────────────────────────────────────
-  #
-  # dist/ is committed to the repo — no TypeScript compilation on Render.
-  # This eliminates Prisma binary download failures and stale-dist issues.
-  #
-  # Build: install production dependencies only (postinstall runs prisma generate)
-  # Start: run DB migrations then launch the pre-compiled server
+  # ── API ───────────────────────────────────────────────────────
   - type: web
     name: control-tower-ai-api
     env: node
@@ -15,8 +9,13 @@ services:
       name: data
       mountPath: /data
       sizeGB: 1
+
+    # dist/ is committed — skip tsc entirely. Just install runtime deps.
     buildCommand: cd server && npm install --omit=dev
+
+    # Migrate then start from the committed dist/
     startCommand: cd server && sh start.sh
+
     healthCheckPath: /healthz
     envVars:
       - key: NODE_ENV
@@ -38,22 +37,15 @@ services:
       - key: CLIENT_ORIGIN
         value: https://control-tower-ai-client.onrender.com
 
-      # Add manually in Render Dashboard → API service → Environment:
-      # GOOGLE_CLIENT_ID
-      # GOOGLE_CLIENT_SECRET
-      # GOOGLE_REDIRECT_URI = https://control-tower-ai-api.onrender.com/api/v1/auth/google/callback
-      # ENCRYPTION_KEY      = node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
-
-  # ── Client (React static site) ────────────────────────────────
-  #
-  # client/dist/ is committed — Render serves it directly, no build step.
+  # ── Client ────────────────────────────────────────────────────
   - type: web
     name: control-tower-ai-client
     env: static
     region: oregon
     plan: starter
-    # No buildCommand needed — dist/ is already built and committed
-    buildCommand: echo "client/dist already built and committed"
+
+    # client/dist/ is committed — no build needed
+    buildCommand: echo "dist already committed"
     staticPublishPath: client/dist
     routes:
       - type: rewrite
