@@ -1,0 +1,52 @@
+.page { display: flex; flex-direction: column; height: 100%; overflow: hidden; }
+.content { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 14px; }
+
+.tabRow {
+  display: flex; gap: 2px; padding: 4px;
+  background: var(--surface-2); border-radius: 8px; border: 0.5px solid var(--border);
+}
+.tab { padding: 6px 14px; border-radius: 6px; font-size: 12px; color: var(--text-muted); cursor: pointer; border: none; background: transparent; font-family: inherit; transition: all 0.12s; }
+.tabActive { background: var(--surface-1); color: var(--text-primary); font-weight: 500; }
+
+.panel { background: var(--surface-1); border-radius: 10px; border: 0.5px solid var(--border); overflow: hidden; }
+
+.reviewItem {
+  display: flex; gap: 12px; padding: 14px;
+  border-bottom: 0.5px solid var(--border);
+}
+.reviewItem:last-child { border-bottom: none; }
+
+.avatar {
+  width: 34px; height: 34px; border-radius: 8px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 500; color: #fff;
+}
+
+.body { flex: 1; min-width: 0; }
+
+.meta { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+
+.stars { display: flex; gap: 2px; }
+.starFilled { font-size: 12px; color: var(--amber); }
+.starEmpty  { font-size: 12px; color: var(--border-strong); }
+
+.time { font-size: 11px; color: var(--text-muted); }
+
+.text { font-size: 13px; color: var(--text-secondary); line-height: 1.5; }
+.byline { font-size: 11px; color: var(--text-muted); margin-top: 3px; }
+
+.actions { display: flex; gap: 6px; margin-top: 10px; }
+
+.draftArea { margin-top: 10px; display: flex; flex-direction: column; gap: 8px; }
+
+.textarea {
+  width: 100%; padding: 8px 10px; border-radius: 7px;
+  border: 0.5px solid var(--border); background: var(--surface-0);
+  color: var(--text-primary); font-size: 12px; font-family: inherit;
+  line-height: 1.5; resize: vertical; outline: none;
+}
+.textarea:focus { border-color: var(--blue); }
+
+.draftActions { display: flex; gap: 6px; }
+
+.loadingMsg { font-size: 13px; color: var(--text-muted); padding: 40px; text-align: center; }

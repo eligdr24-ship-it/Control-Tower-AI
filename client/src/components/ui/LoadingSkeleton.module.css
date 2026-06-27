@@ -1,0 +1,48 @@
+@keyframes shimmer {
+  0%   { background-position: -400px 0; }
+  100% { background-position:  400px 0; }
+}
+
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--surface-2) 25%,
+    var(--border) 50%,
+    var(--surface-2) 75%
+  );
+  background-size: 800px 100%;
+  animation: shimmer 1.4s ease-in-out infinite;
+  border-radius: 4px;
+}
+
+.kpiSkeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px;
+  background: var(--surface-1);
+  border-radius: 10px;
+  border: 0.5px solid var(--border);
+}
+
+.cardSkeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  background: var(--surface-1);
+  border-radius: 10px;
+  border: 0.5px solid var(--border);
+}
+
+.cardSkeletonHeader {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 4px;
+}
+
+.avatarSkeleton {
+  border-radius: 8px !important;
+  flex-shrink: 0;
+}
