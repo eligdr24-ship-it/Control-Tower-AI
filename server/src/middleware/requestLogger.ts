@@ -1,12 +1,21 @@
 import type { Request, Response, NextFunction } from 'express'
+import { logger } from '../lib/logger'
 
-export function requestLogger(req: Request, _res: Response, next: NextFunction): void {
-  // In a real app this would write to an audit_logs table in PostgreSQL
-  if (req.method !== 'GET') {
-    console.log(`[Audit] ${new Date().toISOString()} ${req.method} ${req.path}`, {
-      body: req.body,
-      ip: req.ip,
+export function requestLogger(req: Request, res: Response, next: NextFunction): void {
+  const start = Date.now()
+
+  res.on('finish', () => {
+    const ms = Date.now() - start
+    const level = res.statusCode >= 500 ? 'error' : res.statusCode >= 400 ? 'warn' : 'info'
+
+    logger[level](`${req.method} ${req.path} ${res.statusCode} ${ms}ms`, {
+      method: req.method,
+      path:   req.path,
+      status: res.statusCode,
+      ms,
+      ip:     req.ip,
     })
-  }
+  })
+
   next()
 }

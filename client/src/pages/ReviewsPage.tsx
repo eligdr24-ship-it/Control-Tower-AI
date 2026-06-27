@@ -1,88 +1,128 @@
 import { useState } from 'react'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { TopBar } from '@/components/layout/TopBar'
 import { Button } from '@/components/ui/Button'
 import { EmptyState } from '@/components/ui/EmptyState'
-import { useAsync } from '@/hooks/useAsync'
-import { mockReviews } from '@/data/mock'
+import { ReviewSkeleton } from '@/components/ui/Skeleton'
+import { reviewKeys, fetchReviews, postReviewReply, updateReviewStatus } from '@/api/queries'
 import { timeAgo } from '@/lib/utils'
 import type { Review } from '@/types'
-import styles from './ReviewsPage.module.css'
 
-type RatingFilter = 'pending' | 'low' | 'mid' | 'high'
-
-const fetchReviews = () =>
-  new Promise<Review[]>(resolve => setTimeout(() => resolve(mockReviews), 400))
+type TabFilter = 'pending_reply' | 'low' | 'mid' | 'high'
 
 function Stars({ rating }: { rating: number }) {
   return (
-    <div className={styles.stars} aria-label={`${rating} out of 5 stars`}>
+    <div className="flex gap-0.5" aria-label={`${rating} out of 5 stars`}>
       {Array.from({ length: 5 }).map((_, i) => (
-        <span key={i} className={i < rating ? styles.starFilled : styles.starEmpty}>★</span>
+        <span key={i} className={`text-[12px] ${i < rating ? 'text-amber-400' : 'text-gray-200'}`}>★</span>
       ))}
     </div>
   )
 }
 
 export function ReviewsPage() {
-  const { data: reviews, loading } = useAsync(fetchReviews)
-  const [activeTab, setActiveTab] = useState<RatingFilter>('pending')
-  const [replyDrafts, setReplyDrafts] = useState<Record<string, string>>({})
-  const [replied, setReplied] = useState<Set<string>>(new Set())
+  const qc = useQueryClient()
+  const [tab, setTab]         = useState<TabFilter>('pending_reply')
+  const [drafts, setDrafts]   = useState<Record<string, string>>({})
 
-  const filtered = (reviews ?? []).filter(r => {
-    if (replied.has(r.id)) return false
-    if (activeTab === 'pending') return r.status === 'pending'
-    if (activeTab === 'low') return r.rating <= 2
-    if (activeTab === 'mid') return r.rating === 3
-    if (activeTab === 'high') return r.rating >= 4
+  const statusParam = tab === 'pending_reply' ? 'PENDING_REPLY' : undefined
+
+  const { data, isLoading, isError } = useQuery({
+    queryKey: reviewKeys.list({ status: statusParam }),
+    queryFn:  () => fetchReviews({ status: statusParam, pageSize: 50 }),
+  })
+
+  const replyMutation = useMutation({
+    mutationFn: ({ reviewId, text }: { reviewId: string; text: string }) =>
+      postReviewReply(reviewId, { text, isAiDraft: true }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: reviewKeys.all })
+    },
+  })
+
+  const ignoreMutation = useMutation({
+    mutationFn: (reviewId: string) => updateReviewStatus(reviewId, 'IGNORED'),
+    onSuccess:  () => { void qc.invalidateQueries({ queryKey: reviewKeys.all }) },
+  })
+
+  const allReviews: Review[] = data?.data ?? []
+
+  const filtered = allReviews.filter(r => {
+    if (tab === 'pending_reply') return r.status === 'pending_reply'
+    if (tab === 'low')  return r.rating <= 2
+    if (tab === 'mid')  return r.rating === 3
+    if (tab === 'high') return r.rating >= 4
     return true
   })
 
-  const pendingCount = (reviews ?? []).filter(r => r.status === 'pending' && !replied.has(r.id)).length
+  const pendingCount = allReviews.filter(r => r.status === 'pending_reply').length
 
-  const handleGenerateDraft = (review: Review) => {
-    if (review.aiDraftReply) {
-      setReplyDrafts(d => ({ ...d, [review.id]: review.aiDraftReply! }))
+  const loadDraft = (review: Review) => {
+    // In Phase 3 this calls the Anthropic API; for now use a template
+    const templates: Record<number, string> = {
+      1: `Thank you for your feedback${review.authorName ? `, ${review.authorName.split(' ')[0]}` : ''}. We're sorry to hear about your experience and would love the opportunity to make it right. Please reach out to us directly so we can address your concerns.`,
+      2: `Thank you for taking the time to leave a review. We're sorry your experience didn't meet your expectations. We'd love to hear more — please contact us so we can improve.`,
+      3: `Thank you for your feedback! We're glad parts of your experience were positive and are always working to do better. We hope to serve you again soon.`,
+      4: `Thank you so much for the kind words! We really appreciate you taking the time to share your experience. Hope to see you again soon!`,
+      5: `Wow, thank you for the amazing review${review.authorName ? `, ${review.authorName.split(' ')[0]}` : ''}! Your kind words mean the world to our team. We look forward to welcoming you back!`,
     }
+    setDrafts(d => ({ ...d, [review.id]: templates[review.rating] ?? '' }))
   }
 
-  const handleSubmitReply = (reviewId: string) => {
-    setReplied(prev => new Set(prev).add(reviewId))
-    setReplyDrafts(d => { const n = { ...d }; delete n[reviewId]; return n })
+  const submitReply = (reviewId: string) => {
+    const text = drafts[reviewId]
+    if (!text?.trim()) return
+    replyMutation.mutate({ reviewId, text })
+    setDrafts(d => { const n = { ...d }; delete n[reviewId]; return n })
   }
+
+  const TABS = [
+    { id: 'pending_reply' as TabFilter, label: `Pending (${pendingCount})` },
+    { id: 'low'           as TabFilter, label: '1–2 stars' },
+    { id: 'mid'           as TabFilter, label: '3 stars' },
+    { id: 'high'          as TabFilter, label: '4–5 stars' },
+  ]
 
   return (
-    <div className={styles.page}>
+    <div className="flex flex-col h-full overflow-hidden">
       <TopBar
         title="Reviews"
-        subtitle={`${(reviews ?? []).length} total · ${pendingCount} awaiting reply`}
+        subtitle={`${data?.meta.total ?? '…'} total · ${pendingCount} awaiting reply`}
         actions={
           <Button variant="primary" icon="ti-robot">AI bulk reply</Button>
         }
       />
 
-      <div className={styles.content}>
-        <div className={styles.tabRow} role="tablist">
-          {[
-            { id: 'pending' as RatingFilter, label: `Pending (${pendingCount})` },
-            { id: 'low'     as RatingFilter, label: '1–2 stars' },
-            { id: 'mid'     as RatingFilter, label: '3 stars' },
-            { id: 'high'    as RatingFilter, label: '4–5 stars' },
-          ].map(tab => (
+      <div className="flex-1 overflow-y-auto p-5 flex flex-col gap-3.5">
+
+        {/* Tabs */}
+        <div className="flex gap-0.5 p-1 bg-gray-100 rounded-lg border border-gray-200" role="tablist">
+          {TABS.map(t => (
             <button
-              key={tab.id}
+              key={t.id}
               role="tab"
-              aria-selected={activeTab === tab.id}
-              className={`${styles.tab} ${activeTab === tab.id ? styles.tabActive : ''}`}
-              onClick={() => setActiveTab(tab.id)}
+              aria-selected={tab === t.id}
+              onClick={() => setTab(t.id)}
+              className={`flex-1 px-3.5 py-1.5 rounded-md text-[12px] font-[inherit] cursor-pointer border-none transition-all
+                ${tab === t.id ? 'bg-white text-gray-900 font-medium shadow-sm' : 'bg-transparent text-gray-500 hover:text-gray-700'}`}
             >
-              {tab.label}
+              {t.label}
             </button>
           ))}
         </div>
 
-        {loading ? (
-          <div className={styles.loadingMsg}>Loading reviews…</div>
+        {/* Error */}
+        {isError && (
+          <div className="text-[13px] text-red-600 bg-red-50 border border-red-200 rounded-xl px-4 py-3">
+            Failed to load reviews.
+          </div>
+        )}
+
+        {/* Review list */}
+        {isLoading ? (
+          <div className="bg-white rounded-xl border border-gray-200 px-3.5">
+            {Array.from({ length: 3 }).map((_, i) => <ReviewSkeleton key={i} />)}
+          </div>
         ) : filtered.length === 0 ? (
           <EmptyState
             iconName="ti-star-off"
@@ -90,55 +130,58 @@ export function ReviewsPage() {
             description="All caught up! Switch to another tab to see more reviews."
           />
         ) : (
-          <div className={styles.panel}>
+          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
             {filtered.map(review => (
-              <div key={review.id} className={styles.reviewItem}>
-                <div
-                  className={styles.avatar}
-                  style={{ background: review.businessAvatarColor }}
-                  aria-hidden="true"
-                >
+              <div key={review.id} className="flex gap-3 px-3.5 py-3.5 border-b border-gray-100 last:border-0">
+                <div className="w-[34px] h-[34px] rounded-lg flex items-center justify-center text-[11px] font-medium text-white shrink-0"
+                  style={{ background: review.businessAvatarColor }}>
                   {review.businessAvatarInitials}
                 </div>
-                <div className={styles.body}>
-                  <div className={styles.meta}>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between mb-1">
                     <Stars rating={review.rating} />
-                    <span className={styles.time}>{timeAgo(review.publishedAt)}</span>
+                    <span className="text-[11px] text-gray-400">{timeAgo(review.publishedAt)}</span>
                   </div>
-                  <div className={styles.text}>"{review.text}"</div>
-                  <div className={styles.byline}>
+                  <p className="text-[13px] text-gray-700 leading-snug">"{review.text}"</p>
+                  <div className="text-[11px] text-gray-400 mt-1">
                     {review.businessName} · {review.authorName}
                   </div>
 
-                  {replyDrafts[review.id] ? (
-                    <div className={styles.draftArea}>
+                  {/* Reply draft area */}
+                  {drafts[review.id] !== undefined ? (
+                    <div className="mt-3 flex flex-col gap-2">
                       <textarea
-                        className={styles.textarea}
-                        value={replyDrafts[review.id]}
-                        onChange={e => setReplyDrafts(d => ({ ...d, [review.id]: e.target.value }))}
+                        value={drafts[review.id]}
+                        onChange={e => setDrafts(d => ({ ...d, [review.id]: e.target.value }))}
                         rows={3}
-                        aria-label="Edit reply draft"
+                        className="w-full px-3 py-2 text-[12px] border border-gray-200 rounded-lg bg-gray-50 text-gray-800 resize-y outline-none focus:border-blue-400 font-[inherit] leading-relaxed"
+                        aria-label="Edit reply"
                       />
-                      <div className={styles.draftActions}>
-                        <Button size="sm" variant="primary" onClick={() => handleSubmitReply(review.id)}>
-                          Post reply
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm" variant="primary"
+                          onClick={() => submitReply(review.id)}
+                          disabled={replyMutation.isPending}
+                        >
+                          {replyMutation.isPending ? 'Posting…' : 'Post reply'}
                         </Button>
-                        <Button size="sm" onClick={() => setReplyDrafts(d => { const n={...d}; delete n[review.id]; return n })}>
+                        <Button size="sm" onClick={() => setDrafts(d => { const n={...d}; delete n[review.id]; return n })}>
                           Discard
                         </Button>
                       </div>
                     </div>
+                  ) : review.status === 'replied' ? (
+                    <div className="mt-2 text-[11px] text-emerald-600 flex items-center gap-1">
+                      <i className="ti ti-circle-check" aria-hidden="true" /> Reply posted
+                    </div>
                   ) : (
-                    <div className={styles.actions}>
-                      <Button
-                        size="sm"
-                        variant="primary"
-                        onClick={() => handleGenerateDraft(review)}
-                        disabled={!review.aiDraftReply}
-                      >
-                        {review.aiDraftReply ? 'Generate AI reply' : 'No draft available'}
+                    <div className="flex gap-2 mt-2.5">
+                      <Button size="sm" variant="primary" onClick={() => loadDraft(review)}>
+                        Generate AI reply
                       </Button>
-                      <Button size="sm">Flag</Button>
+                      <Button size="sm" onClick={() => ignoreMutation.mutate(review.id)}>
+                        Ignore
+                      </Button>
                       <Button size="sm">Assign</Button>
                     </div>
                   )}

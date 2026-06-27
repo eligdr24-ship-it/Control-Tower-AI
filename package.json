@@ -3,11 +3,14 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "dev": "cd client && npm run dev",
-    "build": "cd client && npm run build",
-    "start": "cd server && npm start",
-    "install:all": "cd client && npm install && cd ../server && npm install",
-    "lint": "cd client && npm run lint",
-    "type-check": "cd client && npm run type-check"
+    "install:all":  "cd client && npm install && cd ../server && npm install",
+    "dev:client":   "cd client && npm run dev",
+    "dev:server":   "cd server && npm run dev",
+    "build:client": "cd client && npm run build",
+    "build:server": "cd server && npm run build",
+    "db:generate":  "cd server && npm run db:generate",
+    "db:migrate":   "cd server && npm run db:migrate",
+    "db:seed":      "cd server && npm run db:seed",
+    "db:studio":    "cd server && npm run db:studio"
   }
 }

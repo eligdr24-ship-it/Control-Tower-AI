@@ -1,5 +1,4 @@
 import type { ReactNode } from 'react'
-import styles from './EmptyState.module.css'
 
 interface EmptyStateProps {
   iconName: string
@@ -10,13 +9,15 @@ interface EmptyStateProps {
 
 export function EmptyState({ iconName, title, description, action }: EmptyStateProps) {
   return (
-    <div className={styles.empty} role="status">
-      <div className={styles.icon} aria-hidden="true">
+    <div className="flex flex-col items-center justify-center py-12 px-6 text-center bg-white rounded-xl border border-gray-200" role="status">
+      <div className="text-[32px] text-gray-300 mb-3" aria-hidden="true">
         <i className={`ti ${iconName}`} />
       </div>
-      <div className={styles.title}>{title}</div>
-      {description && <p className={styles.desc}>{description}</p>}
-      {action && <div className={styles.action}>{action}</div>}
+      <div className="text-[14px] font-medium text-gray-500 mb-1">{title}</div>
+      {description && (
+        <p className="text-[12px] text-gray-400 max-w-xs leading-relaxed">{description}</p>
+      )}
+      {action && <div className="mt-4">{action}</div>}
     </div>
   )
 }

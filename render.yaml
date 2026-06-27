@@ -1,8 +1,46 @@
 services:
-  # ── Static site (React client) ──────────────────────────────
+  # ── API (Express + Prisma + Google OAuth) ────────────────────
   - type: web
-    name: control-tower-ai-client
+    name: control-tower-ai-api
+    env: node
+    region: oregon
+    plan: starter
+    buildCommand: cd server && npm install && npm run db:generate && npm run build
+    startCommand: cd server && npm run db:migrate && node dist/index.js
+    healthCheckPath: /healthz
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: control-tower-ai-db
+          property: connectionString
+      - key: DIRECT_URL
+        fromDatabase:
+          name: control-tower-ai-db
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_EXPIRES_IN
+        value: 7d
+      - key: CLIENT_ORIGIN
+        # Update this to match your actual static site URL after first deploy
+        value: https://control-tower-ai.onrender.com
+      - key: LOG_LEVEL
+        value: info
+      # ── Add these manually in Render Dashboard → Environment ──
+      # GOOGLE_CLIENT_ID       from Google Cloud Console credentials
+      # GOOGLE_CLIENT_SECRET   from Google Cloud Console credentials
+      # GOOGLE_REDIRECT_URI    https://control-tower-ai-api.onrender.com/api/v1/auth/google/callback
+      # ENCRYPTION_KEY         node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+      # ANTHROPIC_API_KEY      Phase 3 — AI agents
+
+  # ── Client (React static site) ───────────────────────────────
+  - type: web
+    name: control-tower-ai
     env: static
+    region: oregon
+    plan: starter
     buildCommand: cd client && npm install && npm run build
     staticPublishPath: client/dist
     routes:
@@ -11,22 +49,11 @@ services:
         destination: /index.html
     envVars:
       - key: VITE_API_URL
+        # Must match the API service name above
         value: https://control-tower-ai-api.onrender.com
 
-  # ── Web service (Express API) ───────────────────────────────
-  - type: web
-    name: control-tower-ai-api
-    env: node
-    buildCommand: cd server && npm install && npm run build
-    startCommand: cd server && npm start
-    healthCheckPath: /healthz
-    envVars:
-      - key: NODE_ENV
-        value: production
-      - key: PORT
-        value: 4000
-      - key: CLIENT_ORIGIN
-        value: https://control-tower-ai-client.onrender.com
-      # Add these via Render Dashboard → Environment (keep secrets out of this file):
-      # DATABASE_URL, REDIS_URL, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET,
-      # ANTHROPIC_API_KEY, JWT_SECRET, SESSION_SECRET
+databases:
+  - name: control-tower-ai-db
+    databaseName: control_tower_ai
+    plan: starter
+    region: oregon

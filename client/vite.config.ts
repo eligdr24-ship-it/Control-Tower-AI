@@ -5,9 +5,7 @@ import path from 'path'
 export default defineConfig({
   plugins: [react()],
   resolve: {
-    alias: {
-      '@': path.resolve(__dirname, './src'),
-    },
+    alias: { '@': path.resolve(__dirname, './src') },
   },
   build: {
     outDir: 'dist',
@@ -15,7 +13,8 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks: {
-          vendor: ['react', 'react-dom', 'react-router-dom'],
+          vendor:    ['react', 'react-dom', 'react-router-dom'],
+          query:     ['@tanstack/react-query'],
         },
       },
     },
@@ -23,10 +22,7 @@ export default defineConfig({
   server: {
     port: 3000,
     proxy: {
-      '/api': {
-        target: 'http://localhost:4000',
-        changeOrigin: true,
-      },
+      '/api': { target: 'http://localhost:4000', changeOrigin: true },
     },
   },
 })

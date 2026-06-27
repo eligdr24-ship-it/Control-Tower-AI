@@ -1,0 +1,326 @@
+// Prisma schema for Control Tower AI
+// Phase 1: Core tables only
+// Phase 2 additions: GoogleAccount fields (already stubbed)
+// Phase 3 additions: GooglePost, RankingScan tables
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ── Enums ─────────────────────────────────────────────────────
+
+enum UserRole {
+  SUPER_ADMIN
+  ADMIN
+  MANAGER
+  VIEWER
+}
+
+enum OrgMemberRole {
+  OWNER
+  ADMIN
+  MANAGER
+  VIEWER
+}
+
+enum ProfileStatus {
+  ACTIVE
+  SUSPENDED
+  PENDING_VERIFICATION
+  DUPLICATE
+  REMOVED
+}
+
+enum ReviewStatus {
+  PENDING_REPLY
+  REPLIED
+  IGNORED
+  FLAGGED
+}
+
+enum SyncStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+enum AuditAction {
+  USER_CREATED
+  USER_UPDATED
+  USER_DELETED
+  ORG_CREATED
+  ORG_UPDATED
+  GOOGLE_ACCOUNT_CONNECTED
+  GOOGLE_ACCOUNT_DISCONNECTED
+  PROFILE_CREATED
+  PROFILE_UPDATED
+  PROFILE_SYNCED
+  REVIEW_REPLIED
+  REVIEW_FLAGGED
+  POST_CREATED
+  POST_PUBLISHED
+  SYNC_JOB_STARTED
+  SYNC_JOB_COMPLETED
+  SYNC_JOB_FAILED
+}
+
+// ── Users ─────────────────────────────────────────────────────
+
+model User {
+  id            String   @id @default(cuid())
+  email         String   @unique
+  name          String
+  passwordHash  String?  // null for OAuth-only users
+  avatarUrl     String?
+  role          UserRole @default(VIEWER)
+  emailVerified Boolean  @default(false)
+  lastLoginAt   DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Relations
+  memberships   OrganizationMember[]
+  auditLogs     AuditLog[]
+  reviewReplies ReviewReply[]
+
+  @@index([email])
+  @@map("users")
+}
+
+// ── Organizations ─────────────────────────────────────────────
+
+model Organization {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  logoUrl   String?
+  website   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  members        OrganizationMember[]
+  googleAccounts GoogleAccount[]
+  auditLogs      AuditLog[]
+
+  @@index([slug])
+  @@map("organizations")
+}
+
+model OrganizationMember {
+  id             String        @id @default(cuid())
+  userId         String
+  organizationId String
+  role           OrgMemberRole @default(VIEWER)
+  invitedAt      DateTime      @default(now())
+  acceptedAt     DateTime?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  // Relations
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, organizationId])
+  @@index([organizationId])
+  @@map("organization_members")
+}
+
+// ── Google Accounts (Phase 2 ready) ──────────────────────────
+
+model GoogleAccount {
+  id             String   @id @default(cuid())
+  organizationId String
+  googleAccountId String  @unique // Google's account ID
+  email          String
+  displayName    String?
+
+  // OAuth tokens — encrypted at rest in Phase 2
+  accessToken    String?  @map("access_token")
+  refreshToken   String?  @map("refresh_token")
+  tokenExpiresAt DateTime? @map("token_expires_at")
+  scopes         String[] // granted OAuth scopes
+
+  isActive       Boolean  @default(true)
+  lastSyncAt     DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  // Relations
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  businessProfiles BusinessProfile[]
+  syncJobs       SyncJob[]
+
+  @@index([organizationId])
+  @@map("google_accounts")
+}
+
+// ── Business Profiles ─────────────────────────────────────────
+
+model BusinessProfile {
+  id              String        @id @default(cuid())
+  googleAccountId String?
+  organizationId  String
+
+  // GBP identity — populated from Google API in Phase 2
+  gbpName         String?       // Google's "name" resource field e.g. "accounts/123/locations/456"
+  gbpPlaceId      String?       @unique
+
+  // Display data
+  displayName     String
+  category        String?
+  address         String?
+  city            String?
+  state           String?
+  country         String        @default("US")
+  phone           String?
+  website         String?
+  description     String?
+
+  // Computed / cached metrics (updated by sync job)
+  avgRating       Float?
+  totalReviews    Int           @default(0)
+  monthlyViews    Int           @default(0)
+  healthScore     Int           @default(0)  // 0–100
+
+  status          ProfileStatus @default(ACTIVE)
+  isVerified      Boolean       @default(false)
+  lastSyncAt      DateTime?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  // Relations
+  googleAccount   GoogleAccount?  @relation(fields: [googleAccountId], references: [id])
+  reviews         Review[]
+  syncJobs        SyncJob[]
+  auditLogs       AuditLog[]
+
+  @@index([organizationId])
+  @@index([googleAccountId])
+  @@map("business_profiles")
+}
+
+// ── Reviews ───────────────────────────────────────────────────
+
+model Review {
+  id                String       @id @default(cuid())
+  businessProfileId String
+  googleReviewId    String?      @unique  // Google's review ID for dedup
+
+  authorName        String
+  authorPhotoUrl    String?
+  rating            Int          // 1–5
+  text              String?
+  publishedAt       DateTime
+
+  status            ReviewStatus @default(PENDING_REPLY)
+  sentiment         String?      // positive / neutral / negative (Phase 3 AI)
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+
+  // Relations
+  businessProfile   BusinessProfile @relation(fields: [businessProfileId], references: [id], onDelete: Cascade)
+  reply             ReviewReply?
+
+  @@index([businessProfileId])
+  @@index([status])
+  @@map("reviews")
+}
+
+model ReviewReply {
+  id         String   @id @default(cuid())
+  reviewId   String   @unique
+  authorId   String
+  text       String
+  isAiDraft  Boolean  @default(false)
+  postedToGbp Boolean @default(false)
+  postedAt   DateTime?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  // Relations
+  review     Review   @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  author     User     @relation(fields: [authorId], references: [id])
+
+  @@map("review_replies")
+}
+
+// ── Google Posts (Phase 3 ready) ─────────────────────────────
+
+model GooglePost {
+  id                String   @id @default(cuid())
+  businessProfileId String
+  gbpPostId         String?  @unique
+
+  title             String?
+  body              String
+  callToActionType  String?
+  callToActionUrl   String?
+  photoUrl          String?
+
+  publishedAt       DateTime?
+  expiresAt         DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([businessProfileId])
+  @@map("google_posts")
+}
+
+// ── Sync Jobs ─────────────────────────────────────────────────
+
+model SyncJob {
+  id                String     @id @default(cuid())
+  googleAccountId   String?
+  businessProfileId String?
+  type              String     // "FULL_SYNC" | "REVIEWS" | "PROFILES" | "POSTS"
+  status            SyncStatus @default(PENDING)
+  startedAt         DateTime?
+  completedAt       DateTime?
+  errorMessage      String?
+  recordsProcessed  Int        @default(0)
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+
+  // Relations
+  googleAccount     GoogleAccount?   @relation(fields: [googleAccountId], references: [id])
+  businessProfile   BusinessProfile? @relation(fields: [businessProfileId], references: [id])
+
+  @@index([googleAccountId])
+  @@index([status])
+  @@map("sync_jobs")
+}
+
+// ── Audit Log ─────────────────────────────────────────────────
+
+model AuditLog {
+  id             String      @id @default(cuid())
+  userId         String?
+  organizationId String?
+  profileId      String?
+  action         AuditAction
+  entityType     String      // "User" | "Organization" | "BusinessProfile" | etc.
+  entityId       String
+  metadata       Json?       // arbitrary context (old value, new value, etc.)
+  ipAddress      String?
+  userAgent      String?
+  createdAt      DateTime    @default(now())
+
+  // Relations
+  user           User?         @relation(fields: [userId], references: [id])
+  organization   Organization? @relation(fields: [organizationId], references: [id])
+  profile        BusinessProfile? @relation(fields: [profileId], references: [id])
+
+  @@index([userId])
+  @@index([organizationId])
+  @@index([action])
+  @@index([createdAt])
+  @@map("audit_logs")
+}

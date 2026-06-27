@@ -1,15 +1,7 @@
 import { Component, type ReactNode, type ErrorInfo } from 'react'
-import styles from './ErrorBoundary.module.css'
 
-interface Props {
-  children: ReactNode
-  fallback?: ReactNode
-}
-
-interface State {
-  hasError: boolean
-  error: Error | null
-}
+interface Props { children: ReactNode; fallback?: ReactNode }
+interface State { hasError: boolean; error: Error | null }
 
 export class ErrorBoundary extends Component<Props, State> {
   state: State = { hasError: false, error: null }
@@ -25,17 +17,17 @@ export class ErrorBoundary extends Component<Props, State> {
   render() {
     if (this.state.hasError) {
       return this.props.fallback ?? (
-        <div className={styles.error} role="alert">
-          <div className={styles.icon} aria-hidden="true">
+        <div className="flex flex-col items-center justify-center p-12 text-center gap-2" role="alert">
+          <div className="text-[28px] text-red-400" aria-hidden="true">
             <i className="ti ti-alert-triangle" />
           </div>
-          <div className={styles.title}>Something went wrong</div>
-          <p className={styles.desc}>
+          <div className="text-[15px] font-medium text-gray-700">Something went wrong</div>
+          <p className="text-[13px] text-gray-400 max-w-xs">
             {this.state.error?.message ?? 'An unexpected error occurred.'}
           </p>
           <button
-            className={styles.retry}
             onClick={() => this.setState({ hasError: false, error: null })}
+            className="mt-2 px-4 py-2 text-[13px] border border-gray-300 rounded-lg bg-white text-gray-600 hover:bg-gray-50 cursor-pointer"
           >
             Try again
           </button>
