@@ -4,6 +4,24 @@ export type PageId =
   | 'media' | 'rankings' | 'health' | 'agents'
   | 'reporting' | 'automation'
 
+// ── Agency ────────────────────────────────────────────────────
+export interface Agency {
+  id: string
+  name: string
+  ownerEmail?: string
+  createdAt?: string
+}
+
+// ── User ──────────────────────────────────────────────────────
+export interface User {
+  id: string
+  agencyId?: string
+  name: string
+  email: string
+  role: string
+  avatarUrl?: string
+}
+
 // ── Business Profiles ─────────────────────────────────────────
 export type HealthLevel   = 'good' | 'warning' | 'critical'
 export type ProfileStatus = 'active' | 'suspended' | 'pending'
@@ -24,10 +42,17 @@ export interface BusinessProfile {
   isVerified:     boolean
   lastSyncAt:     string | null
   createdAt:      string
+  agencyId?:      string
 }
 
 // ── Reviews ───────────────────────────────────────────────────
-export type ReviewStatus = 'pending_reply' | 'replied' | 'ignored' | 'flagged'
+export type ReviewStatus =
+  | 'pending'
+  | 'pending_reply'
+  | 'replied'
+  | 'unreplied'
+  | 'ignored'
+  | 'flagged'
 
 export interface ReviewReply {
   id:          string
@@ -52,37 +77,68 @@ export interface Review {
   reply:                  ReviewReply | null
 }
 
-// ── Issues (derived on server) ────────────────────────────────
+// ── Issues ────────────────────────────────────────────────────
 export type IssueSeverity = 'critical' | 'warning' | 'info'
 
 export interface Issue {
-  id:           string
-  businessName: string
-  healthScore:  number
-  severity:     IssueSeverity
-  title:        string
-  description:  string
-  iconName:     string
-  createdAt:    string
+  id:                string
+  businessProfileId?: string
+  businessName:      string
+  healthScore:       number
+  severity:          IssueSeverity
+  title:             string
+  description:       string
+  iconName:          string
+  createdAt:         string
+}
+
+// ── KPI Metrics ───────────────────────────────────────────────
+export interface KpiMetric {
+  id: string
+  label: string
+  value: string | number
+  change?: string | number
+  trend?: 'up' | 'down' | 'neutral'
+  description?: string
+}
+
+// ── Keyword Rankings ──────────────────────────────────────────
+export interface KeywordRanking {
+  id: string
+  businessProfileId?: string
+  keyword: string
+  location?: string
+  rank: number
+  previousRank?: number
+  change?: number
+}
+
+// ── Morning Briefing ──────────────────────────────────────────
+export interface MorningBriefing {
+  id: string
+  title: string
+  summary: string
+  items?: string[]
+  severity?: 'good' | 'warning' | 'critical'
+  createdAt?: string
 }
 
 // ── Google Accounts ───────────────────────────────────────────
 export interface GoogleAccount {
-  id:                      string
-  email:                   string
-  displayName:             string | null
-  scopes:                  string[]
-  lastSyncAt:              string | null
-  createdAt:               string
+  id:          string
+  email:       string
+  displayName: string | null
+  scopes:      string[]
+  lastSyncAt:  string | null
+  createdAt:   string
 }
 
-/** Extended shape returned by /dashboard — includes profile count */
 export interface DashboardGoogleAccount extends GoogleAccount {
-  profileCount:            number
-  hasBusinessManageScope:  boolean
+  profileCount:           number
+  hasBusinessManageScope: boolean
 }
 
-// ── KPIs ──────────────────────────────────────────────────────
+// ── Dashboard KPIs ────────────────────────────────────────────
 export interface DashboardKpis {
   totalProfiles:  number
   avgRating:      number
@@ -95,7 +151,7 @@ export interface DashboardData {
   kpis:           DashboardKpis
   recentReviews:  Review[]
   issues:         Issue[]
-  googleAccounts: DashboardGoogleAccount[]  // requirement #6
+  googleAccounts: DashboardGoogleAccount[]
 }
 
 // ── AI Agents ─────────────────────────────────────────────────
@@ -105,6 +161,7 @@ export type AgentColor  = 'blue' | 'green' | 'amber' | 'purple' | 'red'
 export interface Agent {
   id:           string
   name:         string
+  description?: string
   iconName:     string
   color:        AgentColor
   status:       AgentStatus
@@ -119,7 +176,7 @@ export interface ChatMessage {
   timestamp: string
 }
 
-// ── API pagination ────────────────────────────────────────────
+// ── API helpers ───────────────────────────────────────────────
 export interface PaginatedResponse<T> {
   data: T[]
   meta: {
@@ -134,14 +191,13 @@ export interface ApiDataResponse<T> {
   data: T
 }
 
-// ── Discovery result ──────────────────────────────────────────
+// ── Discovery / Sync ──────────────────────────────────────────
 export interface DiscoveryResult {
   discovered: number
   created:    number
   updated:    number
 }
 
-// ── Sync job ──────────────────────────────────────────────────
 export type SyncStatus = 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED'
 
 export interface SyncJob {
