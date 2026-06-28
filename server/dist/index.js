@@ -61,14 +61,18 @@ function buildCorsOptions(nodeEnv, clientOrigin) {
     else {
         logger_1.logger.info('CORS allow-list', { origins: allowed });
     }
+    // Also allow the API's own origin (needed when the server serves static files
+    // and the browser requests assets from the same domain)
+    const apiOrigin = process.env.RENDER_EXTERNAL_URL ?? '';
+    const allAllowed = [...new Set([...allowed, apiOrigin].filter(Boolean))];
     return {
         origin: (origin, callback) => {
             // No Origin header = same-origin request, server-to-server, or curl → allow
             if (!origin)
                 return callback(null, true);
-            if (allowed.includes(origin))
+            if (allAllowed.includes(origin))
                 return callback(null, true);
-            logger_1.logger.warn('CORS rejected', { origin, allowed });
+            logger_1.logger.warn('CORS rejected', { origin, allowed: allAllowed });
             callback(new Error(`CORS: origin "${origin}" is not allowed`));
         },
         methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
